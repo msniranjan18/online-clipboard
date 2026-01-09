@@ -42,9 +42,7 @@ func NewStore(pgConnStr, redisAddr string) (*Store, error) {
 	}
 
 	// 2. Setup Redis
-	rdb := redis.NewClient(&redis.Options{
-		Addr: redisAddr,
-	})
+	rdb := InitRedis(redisAddr)
 
 	// Verify Redis connection
 	if err := rdb.Ping(ctx).Err(); err != nil {
