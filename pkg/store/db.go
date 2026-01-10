@@ -92,7 +92,7 @@ func (s *Store) SaveContent(roomID, content string) error {
 	if err != nil {
 		log.Printf("Redis save error: %v", err)
 	}
-	
+
 	query := `
         INSERT INTO clips (room_id, content, updated_at)
         VALUES ($1, $2, NOW())
@@ -100,6 +100,7 @@ func (s *Store) SaveContent(roomID, content string) error {
         DO UPDATE SET content = EXCLUDED.content, updated_at = NOW()`
 
 	_, err = s.DB.Exec(query, roomID, content)
+	log.Println("Successfully saved to Postgres")
 	return err
 }
 
@@ -120,13 +121,14 @@ func (s *Store) GetContent(roomID string) (string, error) {
 		}
 		return "", err
 	}
-
+	log.Println("Successfully fetched from Postgres")
 	return content, nil
 }
 
 func (s *Store) DeleteContent(roomID string) error {
 	query := `DELETE FROM clips WHERE room_id = $1`
 	_, err := s.DB.Exec(query, roomID)
+	log.Println("Successfully deleted from Postgres")
 	return err
 }
 
