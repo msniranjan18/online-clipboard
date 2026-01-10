@@ -12,8 +12,10 @@ const statusText = document.getElementById('statusText');
 let isFirstLoad = true;
 
 function connect() {
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const socketUrl = `${protocol}//${window.location.host}/ws/${roomID}`;
+    // const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // const socketUrl = `${protocol}//${window.location.host}/ws/${roomID}`;
+    const socketUrl = window.location.origin.replace(/^http/, 'ws') + '/ws/' + roomID;  
+
 
     socket = new WebSocket(socketUrl);
 
