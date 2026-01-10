@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 
@@ -14,6 +15,24 @@ type Store struct {
 	DB  *sql.DB
 	RDB *redis.Client
 	Ctx context.Context
+}
+
+func initSchema(db *sql.DB) error {
+	schema := `
+		CREATE TABLE IF NOT EXISTS clips (
+			room_id TEXT PRIMARY KEY,
+			content TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_clips_updated_at ON clips(updated_at);`
+
+	_, err := db.Exec(schema)
+	if err != nil {
+		return fmt.Errorf("failed to initialize schema: %w", err)
+	}
+	return err
 }
 
 // NewStore initializes both Postgres and Redis connections
@@ -42,6 +61,9 @@ func NewStore(pgConnStr, redisAddr string) (*Store, error) {
 	}
 
 	// 2. Setup Redis
+	// rdb := redis.NewClient(&redis.Options{
+	// 	Addr: redisAddr,
+	// })
 	rdb := InitRedis(redisAddr)
 
 	// Verify Redis connection
@@ -50,6 +72,11 @@ func NewStore(pgConnStr, redisAddr string) (*Store, error) {
 	}
 
 	log.Println("Successfully connected to Postgres and Redis")
+
+	// initilize the db schema
+	if err := initSchema(db); err != nil {
+		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+	}
 
 	return &Store{
 		DB:  db,
@@ -65,14 +92,7 @@ func (s *Store) SaveContent(roomID, content string) error {
 	if err != nil {
 		log.Printf("Redis save error: %v", err)
 	}
-
-	// Upsert into Postgres
-	// query := `
-	// 	INSERT INTO clips (id, content, updated_at)
-	// 	VALUES ($1, $2, NOW())
-	// 	ON CONFLICT (id)
-	// 	DO UPDATE SET content = $2, updated_at = NOW()`
-
+	
 	query := `
         INSERT INTO clips (room_id, content, updated_at)
         VALUES ($1, $2, NOW())
@@ -103,17 +123,6 @@ func (s *Store) GetContent(roomID string) (string, error) {
 
 	return content, nil
 }
-
-// SaveContent updates Redis immediately and schedules a DB write
-// func (s *Store) SaveContent(roomID, content string) error {
-// 	// 1. Update Redis (Hot Cache)
-// 	s.RDB.Set(s.ctx, "room:"+roomID, content, 24*time.Hour)
-
-// 	// 2. In production, you'd use a timer/worker here to
-// 	// update Postgres every 2 seconds instead of every keystroke.
-// 	_, err := s.DB.Exec("INSERT INTO clips (id, content, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (id) DO UPDATE SET content = $2, updated_at = NOW()", roomID, content)
-// 	return err
-// }
 
 func (s *Store) DeleteContent(roomID string) error {
 	query := `DELETE FROM clips WHERE room_id = $1`
