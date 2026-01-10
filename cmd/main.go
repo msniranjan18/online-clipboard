@@ -29,7 +29,7 @@ func main() {
 
 	// Run cleanup every 1 hour, deleting data older than 2 hours
 	// Use a goroutine so it doesn't block the server startup
-	go storage.StartCleanupWorker(1*time.Hour, 24*time.Hour)
+	go storage.StartCleanupWorker(10*time.Minute, 1*time.Hour)
 
 	// 2. Initialize Hub & Background Workers
 	wsHub := hub.NewHub(storage)
