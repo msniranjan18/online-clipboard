@@ -50,6 +50,7 @@ func HandleWS(h *hub.Hub) http.HandlerFunc {
 				log.Printf("Initial push failed: %v", err)
 			}
 		}
+		log.Printf("fetched initial data for room: %s", roomID)
 
 		// Start background routines for this specific connection
 		go client.WritePump()
