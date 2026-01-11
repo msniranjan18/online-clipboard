@@ -21,7 +21,7 @@ services:
       - POSTGRES_DB=clipdb
     volumes:
       # This line maps your local SQL file to the Docker auto-run folder
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      #- ./init.sql:/docker-entrypoint-initdb.d/init.sql
       - postgres_data:/var/lib/postgresql/data
 
   redis:
