@@ -87,9 +87,9 @@ func NewStore(pgConnStr, redisAddr string) (*Store, error) {
 
 // SaveContent updates Redis (instant) and Postgres (persistent)
 func (s *Store) SaveContent(roomID, content string) error {
-	// Set in Redis with 24h TTL
-	err := s.RDB.Set(s.Ctx, "room:"+roomID, content, 24*time.Hour).Err()
-	if err != nil {
+	// Set in Redis with 1 Hour TTL
+	// If Redis fails, stop everything and tell the user "Error"
+	if err := s.RDB.Set(s.Ctx, "room:"+roomID, content, 1*time.Hour).Err(); err != nil {
 		log.Printf("Redis save error: %v", err)
 	}
 
@@ -99,9 +99,15 @@ func (s *Store) SaveContent(roomID, content string) error {
         ON CONFLICT (room_id) 
         DO UPDATE SET content = EXCLUDED.content, updated_at = NOW()`
 
-	_, err = s.DB.Exec(query, roomID, content)
-	log.Println("Successfully saved to Postgres")
-	return err
+	// If Postgres fails, stop and tell the user "Error"
+	if _, err := s.DB.Exec(query, roomID, content); err != nil {
+		return fmt.Errorf("postgres save error: %w", err)
+	}
+
+	log.Printf("Room [%s] saved successfully", roomID)
+
+	// If Redis failed but Postgres worked, the user gets a "Success".
+	return nil
 }
 
 // GetContent fetches the latest text (checks Redis first, then Postgres)
@@ -114,7 +120,7 @@ func (s *Store) GetContent(roomID string) (string, error) {
 
 	// If not in Redis, check Postgres
 	var content string
-	err = s.DB.QueryRow("SELECT content FROM clips WHERE id = $1", roomID).Scan(&content)
+	err = s.DB.QueryRow("SELECT content FROM clips WHERE room_id = $1", roomID).Scan(&content)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", nil // Room doesn't exist yet
