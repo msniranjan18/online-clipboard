@@ -1,33 +1,37 @@
 let socket;
-let reconnectInterval = 2000; // Start with 2 seconds
+let reconnectInterval = 2000;
+let isFirstLoad = true;
+
+// UI Element References
 const editor = document.getElementById('editor');
-const status = document.getElementById('status');
-const roomID = window.location.pathname.substring(1) || 'global';
-// 1. Get references to the new buttons
+const roomNameDisplay = document.getElementById('room-name');
 const saveBtn = document.getElementById('saveBtn');
 const clearBtn = document.getElementById('clearBtn');
 const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
 
-let isFirstLoad = true;
+// Determine Room ID from the URL path (e.g., /room1 -> room1)
+const roomID = window.location.pathname.substring(1) || 'global';
+if (roomNameDisplay) roomNameDisplay.innerText = roomID;
 
 function connect() {
-    // const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // const socketUrl = `${protocol}//${window.location.host}/ws/${roomID}`;
+    // 1. SMART PROTOCOL: Uses wss for HTTPS (Render) and ws for HTTP (Local)
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socketUrl = `${protocol}//${window.location.host}/ws/${roomID}`;
 
-    const socketUrl = `wss://${window.location.host}/ws/${roomID}`;
-
+    console.log("Connecting to:", socketUrl);
     socket = new WebSocket(socketUrl);
 
     socket.onopen = () => {
-        console.log("Connected to server");
+        console.log("WebSocket Connected");
         updateStatus(true);
-        reconnectInterval = 2000;
+        reconnectInterval = 2000; // Reset backoff on success
     };
 
     socket.onmessage = (event) => {
-        // 1. Always update on first load to show existing data
-        // 2. Otherwise, only update if the user isn't typing
+        // Only update textarea if:
+        // A) It's the first time we're getting data (initial load)
+        // B) The user isn't currently typing (avoids cursor jumping)
         if (isFirstLoad || document.activeElement !== editor) {
             editor.value = event.data;
             isFirstLoad = false; 
@@ -35,58 +39,52 @@ function connect() {
     };
 
     socket.onclose = () => {
-        console.log("Disconnected from server");
         updateStatus(false);
-        console.log(`Socket closed. Reconnecting in ${reconnectInterval/1000}s...`, e.reason);
+        console.log(`Disconnected. Retrying in ${reconnectInterval/1000}s...`);
         
-        // Try to reconnect
         setTimeout(() => {
-            // Exponential backoff: increase delay so we don't spam the server
             if (reconnectInterval < 30000) reconnectInterval += 5000; 
             connect();
         }, reconnectInterval);
     };
 
     socket.onerror = (err) => {
-        console.error("Socket encountered error: ", err.message, "Closing socket");
-        statusDot.classList.add('offline');
-        statusText.innerText = "Error";
+        console.error("WebSocket Error detected. Closing...");
         socket.close();
     };
-
-    saveBtn.onclick = () => {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            const payload = {
-                action: "SAVE",
-                content: editor.value,
-                room_id: roomID // roomID should be defined at the top of your script
-            };
-            socket.send(JSON.stringify(payload));
-            
-            // Optional: Provide visual feedback
-            saveBtn.innerText = "Saved!";
-            setTimeout(() => saveBtn.innerText = "Save Now", 2000);
-        }
-    };
-
-    // 3. Handle the "Clear All" button click
-    clearBtn.onclick = () => {
-        if (confirm("Are you sure you want to clear this room? This deletes data from the database.")) {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                const payload = {
-                    action: "CLEAR",
-                    content: "",
-                    room_id: roomID
-                };
-                socket.send(JSON.stringify(payload));
-                editor.value = ""; // Clear locally immediate
-            }
-        }
-    };
-
 }
 
-// Debounce function to limit how often we send data
+// ACTION: Save to Database
+saveBtn.onclick = () => {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        const payload = {
+            action: "SAVE",
+            content: editor.value,
+            room_id: roomID
+        };
+        socket.send(JSON.stringify(payload));
+        
+        saveBtn.innerText = "Saved!";
+        setTimeout(() => saveBtn.innerText = "Save", 2000);
+    }
+};
+
+// ACTION: Clear Room
+clearBtn.onclick = () => {
+    if (confirm("Are you sure? This deletes the history for this room.")) {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            const payload = {
+                action: "CLEAR",
+                content: "",
+                room_id: roomID
+            };
+            socket.send(JSON.stringify(payload));
+            editor.value = "";
+        }
+    }
+};
+
+// SYNC: Real-time typing with Debounce (300ms)
 function debounce(func, timeout = 300) {
     let timer;
     return (...args) => {
@@ -97,20 +95,19 @@ function debounce(func, timeout = 300) {
 
 const sendUpdate = debounce(() => {
     if (socket && socket.readyState === WebSocket.OPEN) {
+        // Send as raw text for the standard broadcast logic
         socket.send(editor.value);
     }
 });
 
 editor.addEventListener('input', sendUpdate);
 
+// HELPER: Update Status Indicator
 function updateStatus(isOnline) {
-    const statusDot = document.getElementById('statusDot');
-    const statusText = document.getElementById('statusText');
-    
-    if (!statusDot || !statusText) return; // Safety check
+    if (!statusDot || !statusText) return;
 
     if (isOnline) {
-        statusDot.className = 'dot online'; // Force reset classes
+        statusDot.className = 'dot online';
         statusText.innerText = "Connected";
     } else {
         statusDot.className = 'dot offline';
@@ -118,5 +115,5 @@ function updateStatus(isOnline) {
     }
 }
 
-// Start connection
+// Initialization
 connect();
